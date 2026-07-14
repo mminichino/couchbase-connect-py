@@ -1,0 +1,90 @@
+"""Couchbase Server and Capella connection helpers."""
+
+from couchbase_connect.auto import AutoCouchbaseConnect, IllegalStateError
+from couchbase_connect.capella import (
+    CapellaAllowedCIDR,
+    CapellaAPIError,
+    CapellaBucket,
+    CapellaCertificate,
+    CapellaCluster,
+    CapellaConnectivity,
+    CapellaCredentials,
+    CapellaNotFoundError,
+    CapellaOrganization,
+    CapellaProject,
+    CapellaUser,
+    CouchbaseCapella,
+    UserNotConfiguredError,
+    connect_cluster,
+    disconnect_cluster,
+)
+from couchbase_connect.cloud import Capella
+from couchbase_connect.config import (
+    CouchbaseConfig,
+    convert_bucket_type,
+    convert_conflict_resolution_type,
+    convert_storage_backend,
+)
+from couchbase_connect.models import (
+    BucketData,
+    CapellaNodeConfig,
+    ClusterNodeConfig,
+    CollectionData,
+    GroupData,
+    IndexData,
+    RoleData,
+    ScopeData,
+    SearchIndexData,
+    TableData,
+    UserData,
+)
+from couchbase_connect.protocol import (
+    CouchbaseConnect,
+    get_instance,
+    open_connection,
+    resolve,
+)
+from couchbase_connect.server import Server
+from couchbase_connect.stream import CouchbaseStream
+
+__all__ = [
+    "AutoCouchbaseConnect",
+    "BucketData",
+    "Capella",
+    "CapellaAPIError",
+    "CapellaAllowedCIDR",
+    "CapellaBucket",
+    "CapellaCertificate",
+    "CapellaCluster",
+    "CapellaConnectivity",
+    "CapellaCredentials",
+    "CapellaNodeConfig",
+    "CapellaNotFoundError",
+    "CapellaOrganization",
+    "CapellaProject",
+    "CapellaUser",
+    "ClusterNodeConfig",
+    "CollectionData",
+    "CouchbaseCapella",
+    "CouchbaseConfig",
+    "CouchbaseConnect",
+    "CouchbaseStream",
+    "GroupData",
+    "IllegalStateError",
+    "IndexData",
+    "RoleData",
+    "ScopeData",
+    "SearchIndexData",
+    "Server",
+    "TableData",
+    "UserData",
+    "UserNotConfiguredError",
+    "connect_cluster",
+    "convert_bucket_type",
+    "convert_conflict_resolution_type",
+    "convert_storage_backend",
+    "disconnect_cluster",
+    "get_instance",
+    "open_connection",
+    "resolve",
+]

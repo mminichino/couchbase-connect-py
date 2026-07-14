@@ -1,0 +1,58 @@
+[project]
+name = "couchbase-connect-py"
+version = "0.1.0"
+description = "Couchbase Server and Capella connection helper with cluster, bucket, and index automation"
+readme = "README.md"
+authors = [
+    { name = "Michael Minichino", email = "info@unix.us.com" }
+]
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries",
+]
+keywords = ["couchbase", "capella", "database", "sdk"]
+dependencies = [
+    "couchbase>=4.6.2",
+    "dnspython>=2.8.0",
+    "pydantic>=2.0.0",
+    "restfull==2.0.1",
+    "tenacity>=9.1.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/mminichino/couchbase-connect-py"
+
+[dependency-groups]
+test = [
+    "pytest>=9",
+    "pytest-order>=1.3.0",
+]
+dev = [
+    "hatch",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["couchbase_connect"]
+
+[tool.pytest.ini_options]
+addopts = "-rE --no-header -v -p no:warnings"
+testpaths = ["tests"]
+pythonpath = [".", "tests"]
+markers = [
+    "server: marks tests that require a Couchbase Server testcontainer",
+    "capella: marks tests that require Capella credentials/properties",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

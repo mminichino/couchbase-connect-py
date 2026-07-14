@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.venv/
+venv/
+.idea/
+*.iml
+pytest.log
+results.log
+# Capella credentials (local copies only)
+tests/resources/test.capella.1.properties
+tests/resources/test.capella.2.properties
+.env

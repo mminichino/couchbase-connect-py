@@ -1,0 +1,15 @@
+#
+# test.capella.1.properties
+#
+capella.organization.name=Field Engineering
+capella.project.name=junit
+capella.database.name=testdb
+capella.token=TOKEN
+capella.user.id=USERID
+#
+#
+couchbase.bucket=data
+couchbase.scope=data
+couchbase.collection=userdata
+couchbase.username=developer
+couchbase.password=#C0uchBas3
