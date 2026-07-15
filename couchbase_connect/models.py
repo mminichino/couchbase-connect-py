@@ -99,6 +99,8 @@ class ClusterNodeConfig:
     ip: str = "127.0.0.1"
     ram_gib: int = 8
     services: List[str] = field(default_factory=lambda: ["data", "index", "query", "fts"])
+    alternate_address: Optional[str] = None
+    alternate_ports: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass

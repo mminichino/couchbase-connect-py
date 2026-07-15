@@ -22,7 +22,7 @@ dependencies = [
     "couchbase>=4.6.2",
     "dnspython>=2.8.0",
     "pydantic>=2.0.0",
-    "restfull==2.0.1",
+    "restfull>=2.0.2",
     "tenacity>=9.1.4",
     "typer>=0.19.0",
 ]
@@ -40,7 +40,11 @@ test = [
 ]
 dev = [
     "hatch",
+    "bump-my-version>=1.4.1",
 ]
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
 
 [build-system]
 requires = ["hatchling"]
@@ -51,6 +55,21 @@ path = "couchbase_connect/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["couchbase_connect"]
+
+[tool.bumpversion]
+current_version = "0.3.0"
+parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)"
+serialize = ["{major}.{minor}.{patch}"]
+search = "{current_version}"
+replace = "{new_version}"
+commit = false
+tag = false
+allow_dirty = false
+
+[[tool.bumpversion.files]]
+filename = "couchbase_connect/__init__.py"
+search = '__version__ = "{current_version}"'
+replace = '__version__ = "{new_version}"'
 
 [tool.pytest.ini_options]
 addopts = "-rE --no-header -v -p no:warnings"

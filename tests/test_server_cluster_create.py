@@ -6,7 +6,7 @@ import pytest
 
 from couchbase_connect import CouchbaseConfig, Server
 
-pytestmark = [pytest.mark.server, pytest.mark.usefixtures("shared_server_container")]
+pytestmark = [pytest.mark.server, pytest.mark.usefixtures("server_container")]
 
 HOST = "127.0.0.1"
 ADMIN = CouchbaseConfig.DEFAULT_USER
@@ -32,11 +32,6 @@ def test_create_cluster_connect_and_create_bucket() -> None:
 
     db.create_cluster(config, options)
     db.connect(config)
-
-    # Drop leftovers so the requested quota fits a small single-node cluster.
-    for name in list(db.list_buckets()):
-        if name in {BUCKET, "data", "tmpidx", "default", "test"}:
-            db.drop_bucket(name)
 
     db.create_bucket(BUCKET, 128, 0)
     assert db.is_bucket(BUCKET)

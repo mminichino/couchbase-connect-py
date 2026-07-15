@@ -141,6 +141,9 @@ class Server(AbstractCouchbaseConnect):
                 cluster_create.wait_for_rebalance_complete(
                     endpoint, config.username, config.password
                 )
+                cluster_create.apply_alternate_addresses(
+                    nodes, config.username, config.password, use_ssl
+                )
                 return
 
             quotas = cluster_create.calculate_server_quotas(first_node, merged)
@@ -188,6 +191,9 @@ class Server(AbstractCouchbaseConnect):
             )
             cluster_create.wait_for_query_ready(
                 endpoint, config.username, config.password
+            )
+            cluster_create.apply_alternate_addresses(
+                nodes, config.username, config.password, use_ssl
             )
             self.connect_target = first_host.host
         except Exception as exc:  # noqa: BLE001

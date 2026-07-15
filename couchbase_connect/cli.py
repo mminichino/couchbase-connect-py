@@ -13,6 +13,8 @@ from couchbase_connect.server import Server
 DEFAULT_SERVICES = ",".join(cluster_create.DEFAULT_SERVER_SERVICES)
 DEFAULT_RAM_GIB = 4
 
+NodeSpec = Tuple[str, List[str], int, Optional[str], dict[str, int]]
+
 app = typer.Typer(
     name="cbctl",
     help="Provision Couchbase Server clusters, buckets, scopes, and collections.",
@@ -29,22 +31,39 @@ app.add_typer(scope_app, name="scope")
 app.add_typer(collection_app, name="collection")
 
 
+def _parse_alternate_fragment(
+    fragment: str,
+) -> Tuple[Optional[str], dict[str, int]]:
+    text = fragment.strip()
+    if not text:
+        return None, {}
+    if ";" in text:
+        host, ports_text = text.split(";", 1)
+        return host.strip() or None, cluster_create.parse_alternate_ports(ports_text)
+    return text, {}
+
+
 def _parse_node_spec(
     spec: str,
     default_services: Sequence[str],
     default_ram: int,
-) -> Tuple[str, List[str], int]:
-    """Parse ``HOST[=SERVICES][@RAM]`` into host, services, and RAM GiB."""
+) -> NodeSpec:
     host_part = spec
     services: List[str] = list(default_services)
     ram = default_ram
+    alternate_address: Optional[str] = None
+    alternate_ports: dict[str, int] = {}
+
+    if "#" in host_part:
+        host_part, alternate_text = host_part.rsplit("#", 1)
+        alternate_address, alternate_ports = _parse_alternate_fragment(alternate_text)
 
     if "@" in host_part:
         host_part, ram_text = host_part.rsplit("@", 1)
         if not ram_text.strip().isdigit():
             raise typer.BadParameter(
                 f"Invalid RAM in node spec {spec!r}; "
-                "expected HOST, HOST=SERVICES, HOST=SERVICES@RAM, or HOST@RAM"
+                "expected HOST[=SERVICES][@RAM][#ALTERNATE]"
             )
         ram = int(ram_text.strip())
 
@@ -54,7 +73,7 @@ def _parse_node_spec(
         if not parsed:
             raise typer.BadParameter(
                 f"Invalid services in node spec {spec!r}; "
-                "expected HOST, HOST=SERVICES, HOST=SERVICES@RAM, or HOST@RAM"
+                "expected HOST[=SERVICES][@RAM][#ALTERNATE]"
             )
         services = parsed
     else:
@@ -64,19 +83,23 @@ def _parse_node_spec(
     if not host:
         raise typer.BadParameter(
             f"Invalid node spec {spec!r}; "
-            "expected HOST, HOST=SERVICES, HOST=SERVICES@RAM, or HOST@RAM"
+            "expected HOST[=SERVICES][@RAM][#ALTERNATE]"
         )
-    return host, services, ram
+    return host, services, ram, alternate_address, alternate_ports
 
 
-def _build_server_options(
-    nodes: Sequence[Tuple[str, List[str], int]],
-) -> dict[str, str]:
+def _build_server_options(nodes: Sequence[NodeSpec]) -> dict[str, str]:
     options: dict[str, str] = {}
-    for index, (host, services, ram) in enumerate(nodes):
+    for index, (host, services, ram, alternate, ports) in enumerate(nodes):
         options[f"couchbase.server.{index}.ip"] = host
         options[f"couchbase.server.{index}.ram"] = str(ram)
         options[f"couchbase.server.{index}.services"] = ",".join(services)
+        if alternate:
+            options[f"couchbase.server.{index}.alternateAddress"] = alternate
+        if ports:
+            options[f"couchbase.server.{index}.alternatePorts"] = ",".join(
+                f"{service}:{port}" for service, port in ports.items()
+            )
     return options
 
 
@@ -124,7 +147,8 @@ def cluster_create_cmd(
         "-n",
         help=(
             "Node spec for multi-dimensional scaling: "
-            "HOST or HOST=SERVICES or HOST=SERVICES@RAM or HOST@RAM. "
+            "HOST or HOST=SERVICES or HOST=SERVICES@RAM or HOST@RAM, "
+            "optionally with #ALTERNATE or #ALTERNATE;kv:9000,n1ql:9050. "
             "Repeat for each node. "
             f"SERVICES default to {DEFAULT_SERVICES}; RAM defaults to {DEFAULT_RAM_GIB} GiB."
         ),
@@ -139,6 +163,15 @@ def cluster_create_cmd(
         DEFAULT_RAM_GIB,
         "--ram",
         help="Default RAM quota in GiB when a node spec omits @RAM.",
+    ),
+    alternate_address: Optional[str] = typer.Option(
+        None,
+        "--alternate-address",
+        "-a",
+        help=(
+            "External alternate address for a single-node cluster "
+            "(when --node is omitted). For multi-node, embed #ALTERNATE in --node."
+        ),
     ),
     username: str = typer.Option(
         CouchbaseConfig.DEFAULT_USER,
@@ -158,21 +191,26 @@ def cluster_create_cmd(
         help="Use TLS for management endpoints (default: no TLS).",
     ),
 ) -> None:
-    """Create and initialize a Couchbase Server cluster."""
     default_services = [part.strip() for part in services.split(",") if part.strip()]
     if not default_services:
         raise typer.BadParameter("At least one service is required")
 
     if node:
-        nodes = [
-            _parse_node_spec(spec, default_services, ram) for spec in node
-        ]
+        if alternate_address:
+            raise typer.BadParameter(
+                "Use #ALTERNATE in --node instead of --alternate-address "
+                "when specifying multiple nodes"
+            )
+        nodes = [_parse_node_spec(spec, default_services, ram) for spec in node]
     else:
+        alt_host, alt_ports = _parse_alternate_fragment(alternate_address or "")
         nodes = [
             (
                 host or CouchbaseConfig.DEFAULT_HOSTNAME,
                 default_services,
                 ram,
+                alt_host,
+                alt_ports,
             )
         ]
 
@@ -218,7 +256,6 @@ def bucket_create_cmd(
         help="Use TLS when connecting (default: no TLS).",
     ),
 ) -> None:
-    """Create a bucket on an existing cluster."""
     config = _connection_config(host, username, password, ssl, bucket=name)
     db = _connected_server(config)
     try:
@@ -258,7 +295,6 @@ def scope_create_cmd(
         help="Use TLS when connecting (default: no TLS).",
     ),
 ) -> None:
-    """Create a scope in a bucket."""
     config = _connection_config(host, username, password, ssl, bucket=bucket, scope=name)
     db = _connected_server(config)
     try:
@@ -299,7 +335,6 @@ def collection_create_cmd(
         help="Use TLS when connecting (default: no TLS).",
     ),
 ) -> None:
-    """Create a collection in a scope."""
     config = _connection_config(
         host, username, password, ssl, bucket=bucket, scope=scope, collection=name
     )

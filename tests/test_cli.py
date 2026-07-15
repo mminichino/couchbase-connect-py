@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 from couchbase_connect import CouchbaseConfig, Server
 from couchbase_connect.cli import app
 
-pytestmark = [pytest.mark.server, pytest.mark.usefixtures("shared_server_container")]
+pytestmark = [pytest.mark.server, pytest.mark.usefixtures("server_container")]
 
 HOST = "127.0.0.1"
 ADMIN = CouchbaseConfig.DEFAULT_USER
@@ -34,26 +34,13 @@ def test_cli_create_cluster_bucket_scope_collection() -> None:
             PASSWORD,
             "--ram",
             "4",
+            "--services",
+            "data,index,query,fts",
             "--no-ssl",
         ],
     )
     assert cluster_result.exit_code == 0, cluster_result.output
     assert "Cluster created" in cluster_result.output
-
-    db = Server.get_instance()
-    config = (
-        CouchbaseConfig()
-        .host(HOST)
-        .with_username(ADMIN)
-        .with_password(PASSWORD)
-        .ssl(False)
-    )
-    db.connect(config)
-    for name in list(db.list_buckets()):
-        if name in {BUCKET, "data", "tmpidx", "default", "test", "cluster-test"}:
-            db.drop_bucket(name)
-    db.disconnect()
-    Server._instance = None
 
     bucket_result = runner.invoke(
         app,
@@ -120,8 +107,14 @@ def test_cli_create_cluster_bucket_scope_collection() -> None:
     assert f"Collection {COLLECTION!r} created" in collection_result.output
 
     db = Server.get_instance()
+    config = (
+        CouchbaseConfig()
+        .host(HOST)
+        .with_username(ADMIN)
+        .with_password(PASSWORD)
+        .ssl(False)
+    )
     db.connect(config)
     assert db.is_bucket(BUCKET)
     assert db.collection_exists(BUCKET, SCOPE, COLLECTION)
-    db.drop_bucket(BUCKET)
     db.disconnect()

@@ -93,6 +93,14 @@ def parse_server_nodes(options: Mapping[str, str]) -> List[ClusterNodeConfig]:
             node.ram_gib = int(value)
         elif field == "services":
             node.services = _parse_services(value, DEFAULT_SERVER_SERVICES)
+        elif field in {"alternateAddress", "alternate", "external"}:
+            node.alternate_address = value.strip() or None
+        elif field == "alternatePorts":
+            node.alternate_ports.update(parse_alternate_ports(value))
+        elif field.startswith("alternatePort."):
+            service = field.split(".", 1)[1].strip()
+            if service and value.strip():
+                node.alternate_ports[_to_rest_service(service)] = int(value.strip())
     if not nodes:
         nodes[0] = ClusterNodeConfig(
             ip=options.get(CouchbaseConfig.COUCHBASE_HOST, CouchbaseConfig.DEFAULT_HOSTNAME),
@@ -350,6 +358,53 @@ def post_form(
         ) from exc
 
 
+def setup_alternate_address(
+    endpoint: ClusterRestEndpoint,
+    username: str,
+    password: str,
+    alternate_hostname: str,
+    ports: Optional[Mapping[str, int]] = None,
+) -> None:
+    fields: MutableMapping[str, str] = {"hostname": alternate_hostname}
+    if ports:
+        for service, port in ports.items():
+            fields[_to_rest_service(service)] = str(port)
+    path = "/node/controller/setupAlternateAddresses/external"
+    rest = _form_client(endpoint, username, password, endpoint.admin_port)
+    try:
+        rest.put_form(path, dict(fields)).validate()
+    except Exception as exc:  # noqa: BLE001
+        raise ClusterCreateError(
+            f"HTTP {rest.response_code} from {path}: {exc}"
+        ) from exc
+
+
+def apply_alternate_addresses(
+    nodes: Sequence[ClusterNodeConfig],
+    username: str,
+    password: str,
+    use_ssl: bool,
+) -> None:
+    admin_rest_port = 18091 if use_ssl else 8091
+    for node in nodes:
+        if not node.alternate_address:
+            continue
+        node_host = parse_host_port(node.ip, admin_rest_port)
+        endpoint = ClusterRestEndpoint.for_server(node_host.host, use_ssl)
+        logger.debug(
+            "Setting alternate address %s on node %s",
+            node.alternate_address,
+            node_host.host,
+        )
+        setup_alternate_address(
+            endpoint,
+            username,
+            password,
+            node.alternate_address,
+            node.alternate_ports or None,
+        )
+
+
 def _is_rebalance_in_progress(rest: RestAPI) -> bool:
     progress = rest.get("/pools/default/rebalanceProgress").validate().json()
     if isinstance(progress, dict) and progress.get("status") is not None:
@@ -420,6 +475,23 @@ def _read_quota_override(
     if value is None or not value.strip():
         return default_quota
     return int(value)
+
+
+def parse_alternate_ports(value: Optional[str]) -> Dict[str, int]:
+    ports: Dict[str, int] = {}
+    if not value or not value.strip():
+        return ports
+    for part in value.split(","):
+        item = part.strip()
+        if not item:
+            continue
+        if ":" not in item:
+            raise ValueError(
+                f"Invalid alternate port {item!r}; expected service:port pairs"
+            )
+        service, port_text = item.split(":", 1)
+        ports[_to_rest_service(service.strip())] = int(port_text.strip())
+    return ports
 
 
 def _parse_services(value: Optional[str], default_services: Sequence[str]) -> List[str]:
