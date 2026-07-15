@@ -57,9 +57,10 @@ class CapellaAllowedCIDR:
             cidr_id = reply.get("id")
             try:
                 self.cidr = self.get_by_id(cidr_id)
-            except CapellaNotFoundError as exc:
+                assert self.cidr is not None
+                return self.cidr
+            except (CapellaNotFoundError, AssertionError) as exc:
                 raise RuntimeError("Allowed CIDR creation failed") from exc
-            return self.cidr
         except Exception as exc:
             raise CapellaAPIError(
                 self.rest.response_code,
@@ -134,6 +135,6 @@ class CapellaAllowedCIDR:
                 exc,
             ) from exc
 
-    def get_allowed_cidr(self, network: str) -> AllowedCIDRData:
+    def get_allowed_cidr(self, network: str) -> AllowedCIDRData | None:
         self.cidr = self.get_by_name(network)
         return self.cidr

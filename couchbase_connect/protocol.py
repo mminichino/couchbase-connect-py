@@ -12,7 +12,7 @@ from typing import (
     Optional,
     Protocol,
     Set,
-    runtime_checkable,
+    runtime_checkable, cast,
 )
 
 from couchbase.cluster import Cluster
@@ -35,7 +35,6 @@ from couchbase_connect.models import (
 
 @runtime_checkable
 class CouchbaseConnect(Protocol):
-    """Unified Couchbase Server / Capella connection interface."""
 
     def connect(self, config: CouchbaseConfig) -> None: ...
 
@@ -212,7 +211,6 @@ class CouchbaseConnect(Protocol):
 
 
 def resolve(config: CouchbaseConfig) -> CouchbaseConnect:
-    """Return a Server or Capella connect instance for the given config."""
     if config.is_capella():
         from couchbase_connect.cloud import Capella
 
@@ -223,15 +221,13 @@ def resolve(config: CouchbaseConfig) -> CouchbaseConnect:
 
 
 def get_instance() -> CouchbaseConnect:
-    """Return the AutoCouchbaseConnect singleton facade (Java parity)."""
     from couchbase_connect.auto import AutoCouchbaseConnect
 
-    return AutoCouchbaseConnect.get_instance()
+    return cast(CouchbaseConnect, cast(object, AutoCouchbaseConnect.get_instance()))
 
 
 @contextmanager
 def open_connection(config: CouchbaseConfig) -> Iterator[CouchbaseConnect]:
-    """Resolve, connect, yield, then disconnect."""
     connection = resolve(config)
     connection.connect(config)
     try:

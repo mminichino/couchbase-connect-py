@@ -1,4 +1,4 @@
-"""Best-effort document dump stream (N1QL substitute for Java DCP CouchbaseStream)."""
+"""Best-effort document dump stream (substitute for Java DCP)."""
 
 from __future__ import annotations
 
@@ -17,11 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class CouchbaseStream:
-    """Dump documents from a collection as JSON lines.
-
-    Continuous DCP streaming is not available in the official Python SDK; dump-to-now
-    uses N1QL as a best-effort substitute.
-    """
 
     def __init__(
         self,
@@ -74,15 +69,14 @@ class CouchbaseStream:
             self._cluster = Cluster.connect(connect_string, options)
         except Exception:
             self._cluster = Cluster(connect_string, options)
+        assert self._cluster is not None
         return self._cluster
 
     def stream_documents(self) -> None:
-        """Mark dump mode (N1QL) — called for Java API parity."""
         self._mode = "dump"
         self._ensure_cluster()
 
     def start_to_now(self) -> None:
-        """Begin dump-from-beginning-to-now (N1QL SELECT)."""
         self._mode = "dump"
         self._started = True
         self._ensure_cluster()
@@ -94,12 +88,10 @@ class CouchbaseStream:
         )
 
     def documents(self) -> Iterator[Dict[str, Any]]:
-        """Yield {metadata, document} dicts for the current keyspace dump."""
         for line in self.stream_data():
             yield json.loads(line)
 
     def stream_data(self) -> Iterator[str]:
-        """Yield JSON lines: {"metadata":{"id":...},"document":...}."""
         if not self._started:
             self.start_to_now()
         cluster = self._ensure_cluster()
@@ -112,7 +104,6 @@ class CouchbaseStream:
             if not isinstance(row, dict):
                 continue
             doc_id = row.pop("id", None)
-            # Rows may be nested under alias 't' depending on query engine.
             document = row.get("t") if "t" in row and isinstance(row.get("t"), dict) else row
             if isinstance(document, dict) and "id" in document and doc_id is None:
                 doc_id = document.pop("id", None)
@@ -140,7 +131,7 @@ class CouchbaseStream:
     def stop(self) -> None:
         if self._cluster is not None:
             try:
-                self._cluster.disconnect()
+                self._cluster.close()
             except Exception as exc:  # noqa: BLE001
                 logger.debug("stream disconnect: %s", exc)
             self._cluster = None

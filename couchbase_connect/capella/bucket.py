@@ -51,7 +51,6 @@ class CapellaBucket:
         return None
 
     def create_bucket(self, settings: Mapping[str, Any]) -> CapellaBucketData:
-        """Create a bucket from a settings dict (skip if name already exists)."""
         name = settings.get("name")
         if not name:
             raise ValueError("settings must include 'name'")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Any
 
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 class Server(AbstractCouchbaseConnect):
-    """Couchbase Server connection using a hostname-based connect string."""
 
     _instance: Optional["Server"] = None
 
@@ -28,6 +27,7 @@ class Server(AbstractCouchbaseConnect):
     def get_instance(cls) -> "Server":
         if cls._instance is None:
             cls._instance = cls()
+        assert cls._instance is not None
         return cls._instance
 
     def connect(self, config: CouchbaseConfig) -> None:
@@ -49,14 +49,13 @@ class Server(AbstractCouchbaseConnect):
 
             auth_kwargs = {}
             if config.client_cert:
-                # CertificateAuthenticator path reserved; prefer password auth.
                 logger.debug(
                     "client certificate configured (%s); using password authenticator",
                     config.client_cert,
                 )
             authenticator = PasswordAuthenticator(self.username, self.password, **auth_kwargs)
 
-            option_kwargs = {
+            option_kwargs: dict[str, Any] = {
                 "timeout_options": timeout_opts,
                 "enable_tls": bool(self.use_ssl),
                 "enable_mutation_tokens": False,
@@ -87,7 +86,7 @@ class Server(AbstractCouchbaseConnect):
         self.collection = None
         if self.cluster is not None:
             try:
-                self.cluster.disconnect()
+                self.cluster.close()
             except Exception as exc:  # noqa: BLE001
                 logger.debug("disconnect: %s", exc)
         self.cluster = None

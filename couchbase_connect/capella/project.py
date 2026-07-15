@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from restfull.exceptions import NotFoundError
-
 from couchbase_connect.capella.exceptions import (
     CapellaAPIError,
     CapellaNotFoundError,
@@ -94,7 +92,6 @@ class CapellaProject:
     ) -> "CapellaCluster":
         from couchbase_connect.capella.cluster import CapellaCluster, ClusterConfig
 
-        # Support create_cluster(config) and create_cluster(name, config).
         if isinstance(cluster_name, ClusterConfig) and cluster_config is None:
             cluster_config = cluster_name
             cluster_name = None

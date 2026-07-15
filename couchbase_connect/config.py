@@ -42,8 +42,6 @@ def convert_conflict_resolution_type(value: str) -> str:
 
 
 class CouchbaseConfig:
-    """Fluent configuration for Server and Capella connections."""
-
     COUCHBASE_HOST = "couchbase.hostname"
     COUCHBASE_USER = "couchbase.username"
     COUCHBASE_PASSWORD = "couchbase.password"
@@ -117,7 +115,6 @@ class CouchbaseConfig:
     def server_quota_key(service: str) -> str:
         return f"couchbase.server.{service}.quota"
 
-    # --- getters mirroring Java API ---
     @property
     def hostname(self) -> str:
         return self._hostname
@@ -210,7 +207,6 @@ class CouchbaseConfig:
     def properties(self) -> dict[str, str]:
         return self._properties
 
-    # --- fluent setters ---
     def ttl(self, value: int) -> CouchbaseConfig:
         self._ttl_seconds = value
         return self

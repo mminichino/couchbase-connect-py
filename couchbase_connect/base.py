@@ -63,7 +63,6 @@ logger = logging.getLogger(__name__)
 
 
 class AbstractCouchbaseConnect(ABC):
-    """Port of Java AbstractCouchbaseConnect — shared Server/Capella behaviour."""
 
     def __init__(self) -> None:
         self.cluster: Optional[Cluster] = None
@@ -97,8 +96,6 @@ class AbstractCouchbaseConnect(ABC):
         self.cluster_edition: str = ""
         self.enable_debug: bool = False
         self.host_map: List[Dict[str, Any]] = []
-
-    # --- config / lifecycle helpers ---
 
     def apply_config(self, config: CouchbaseConfig) -> None:
         self.connect_target = config.hostname
@@ -136,7 +133,8 @@ class AbstractCouchbaseConnect(ABC):
                 pass
         self.load_cluster_info()
 
-    def log_error(self, error: Exception, connect_string: str) -> None:
+    @staticmethod
+    def log_error(error: Exception, connect_string: str) -> None:
         logger.error("Connection string: %s", connect_string)
         logger.error("%s", error, exc_info=True)
 
@@ -203,8 +201,6 @@ class AbstractCouchbaseConnect(ABC):
             verify=False,
         )
 
-    # --- abstract hooks ---
-
     @abstractmethod
     def create_bucket_impl(self, bucket_settings: CreateBucketSettings) -> None: ...
 
@@ -226,8 +222,6 @@ class AbstractCouchbaseConnect(ABC):
 
     @abstractmethod
     def supports_rbac_rest(self) -> bool: ...
-
-    # --- public API ---
 
     def create_cluster(
         self,
@@ -380,12 +374,6 @@ class AbstractCouchbaseConnect(ABC):
         *,
         scope_name: Optional[str] = None,
     ) -> None:
-        """Connect a collection.
-
-        Supports Java-style overloads:
-        ``connect_collection()``, ``connect_collection(name)``, and
-        ``connect_collection(scope_name, collection_name)``.
-        """
         if self.bucket is None:
             raise NotConnectedError("Bucket is not connected")
         if scope_name is not None and collection_name is not None:
@@ -428,9 +416,9 @@ class AbstractCouchbaseConnect(ABC):
     ) -> None:
         if bucket_data is not None:
             self.bucket_create(
-                bucket_data.name,
-                bucket_data.quota,
-                bucket_data.replicas,
+                bucket_data.name if bucket_data.name else "default",
+                bucket_data.quota if bucket_data.quota else 128,
+                bucket_data.replicas if bucket_data.replicas is not None else 1,
                 convert_bucket_type(bucket_data.type),
                 convert_storage_backend(bucket_data.storage),
             )
@@ -542,7 +530,6 @@ class AbstractCouchbaseConnect(ABC):
         except CollectionNotFoundException:
             return False
         except Exception:  # noqa: BLE001
-            # Collection access may not raise until first op; fall back to manager scan.
             try:
                 bucket = self.cluster.bucket(bucket_name)
                 for scope_spec in bucket.collections().get_all_scopes():

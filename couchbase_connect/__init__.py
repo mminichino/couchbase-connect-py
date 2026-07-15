@@ -88,3 +88,5 @@ __all__ = [
     "open_connection",
     "resolve",
 ]
+
+__version__ = "0.1.0"

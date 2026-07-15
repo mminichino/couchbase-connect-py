@@ -78,7 +78,7 @@ class CapellaUser:
     def get_unique_users(self) -> List[CapellaOrgUserData]:
         result = self.list_users()
         size = len(result)
-        user_set: Set[str] = {u.id for u in result if u.id}
+        user_set: Set[str] = {u.id for u in result if u.id is not None}
         users_by_id = {u.id: u for u in result if u.id}
         while len(user_set) < size:
             update = self.list_users()

@@ -1,4 +1,4 @@
-"""Connect to a Capella cluster with the Couchbase Python SDK 4.x."""
+"""Connect to a cappella cluster."""
 
 from __future__ import annotations
 
@@ -26,7 +26,6 @@ _TEMP_CERT_FILES: list[str] = []
 
 
 def normalize_connect_string(connect_string: str) -> str:
-    """Ensure Capella endpoints use the TLS connection-string scheme."""
     value = (connect_string or "").strip()
     if not value:
         return value
@@ -45,34 +44,31 @@ def connect_cluster(
     connect_timeout: int = 15,
     query_timeout: int = 75,
 ) -> Cluster:
-    """Connect to Capella using PasswordAuthenticator and optional PEM trust store."""
     connect_string = normalize_connect_string(connect_string)
     if not connect_string:
         raise ValueError("Capella connection string is required")
 
     timeout_opts = _build_timeout_options(kv_timeout, connect_timeout, query_timeout)
 
-    trust_path: Optional[str] = None
+    auth_kwargs: dict = {}
     if certificate_pem:
-        trust_path = _write_cert_tempfile(certificate_pem)
+        auth_kwargs["cert_path"] = _write_cert_tempfile(certificate_pem)
 
-    authenticator = PasswordAuthenticator(username, password)
-    options = _build_cluster_options(authenticator, timeout_opts, trust_path)
+    authenticator = PasswordAuthenticator(username, password, **auth_kwargs)
+    options = _build_cluster_options(authenticator, timeout_opts)
 
-    # Capella-recommended WAN timeouts (bootstrap/DNS) when available.
     try:
         options.apply_profile("wan_development")
     except Exception as exc:  # noqa: BLE001
         logger.debug("Unable to apply wan_development profile: %s", exc)
 
-    # kv_endpoints reserved for future ClusterOptions / connection-string wiring
     _ = kv_endpoints
 
     cluster = _cluster_connect_with_retry(connect_string, options)
 
     try:
         cluster.wait_until_ready(timedelta(seconds=max(connect_timeout, 20)))
-    except Exception:
+    except Exception:  # noqa: BLE001
         try:
             cluster.ping()
         except Exception as exc:
@@ -92,7 +88,6 @@ def connect_cluster(
     before_sleep=before_sleep_log(logger, logging.DEBUG),
 )
 def _cluster_connect_with_retry(connect_string: str, options: ClusterOptions) -> Cluster:
-    """Mirror Java CapellaConnect.clusterConnect retry on connect timeouts."""
     cluster = Cluster.connect(connect_string, options)
     cluster.ping()
     return cluster
@@ -123,38 +118,20 @@ def _build_timeout_options(
 def _build_cluster_options(
     authenticator: PasswordAuthenticator,
     timeout_opts: ClusterTimeoutOptions,
-    trust_path: Optional[str],
 ) -> ClusterOptions:
-    option_kwargs: dict = {
-        "timeout_options": timeout_opts,
-        "enable_tls": True,
-    }
-    if trust_path:
-        option_kwargs["trust_store_path"] = trust_path
     try:
-        return ClusterOptions(authenticator, **option_kwargs)
+        return ClusterOptions(
+            authenticator,
+            timeout_options=timeout_opts,
+            enable_tls=True,
+        )
     except TypeError:
-        if trust_path:
-            try:
-                return ClusterOptions(
-                    authenticator,
-                    timeout_options=timeout_opts,
-                    trust_store_path=trust_path,
-                )
-            except TypeError:
-                pass
         return ClusterOptions(authenticator, timeout_options=timeout_opts)
 
 
-def disconnect_cluster(cluster: Cluster, timeout_seconds: int = 15) -> None:
-    """Disconnect a cluster and release SDK resources."""
+def disconnect_cluster(cluster: Cluster) -> None:
     try:
-        cluster.disconnect(timedelta(seconds=timeout_seconds))
-    except TypeError:
-        try:
-            cluster.disconnect()
-        except Exception as exc:
-            logger.warning("Cluster disconnect did not complete cleanly: %s", exc)
+        cluster.close()
     except Exception as exc:
         logger.warning("Cluster disconnect did not complete cleanly: %s", exc)
     finally:

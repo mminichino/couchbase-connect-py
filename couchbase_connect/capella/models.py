@@ -1,4 +1,4 @@
-"""Pydantic v2 models for Capella REST request/response payloads."""
+"""Pydantic models for Capella REST request/response payloads."""
 
 from __future__ import annotations
 
@@ -171,7 +171,7 @@ class DiskConfig(CapellaModel):
         }
         for threshold, disk_type in matrix.items():
             if threshold >= storage:
-                return cls(type=disk_type, auto_expansion=True)
+                return cls(type=disk_type, autoExpansion=True)
         raise ValueError(f"Invalid storage value: {storage}")
 
     @classmethod
@@ -293,8 +293,6 @@ class BucketStatsData(CapellaModel):
 
 
 class CapellaBucketData(CapellaModel):
-    """Capella bucket document (named to avoid clash with Server BucketData)."""
-
     id: Optional[str] = None
     name: Optional[str] = None
     type: Optional[str] = None
@@ -394,8 +392,6 @@ class ResourcesData(CapellaModel):
 
 
 class CapellaOrgUserData(CapellaModel):
-    """Organization user (from Java UserData)."""
-
     id: Optional[str] = None
     name: Optional[str] = None
     email: Optional[str] = None

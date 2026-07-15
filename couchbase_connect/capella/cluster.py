@@ -498,7 +498,6 @@ class CapellaCluster:
 
         return normalize_connect_string(self.cluster.connection_string)
 
-    # Java-style getters
     def get_bucket(self) -> Optional["CapellaBucket"]:
         return self.bucket
 

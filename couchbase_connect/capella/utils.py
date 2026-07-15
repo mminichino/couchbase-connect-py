@@ -361,7 +361,6 @@ _RIGHT = [
 
 
 def random_name() -> str:
-    """Docker-style random name (mirrors Java NameGenerator)."""
     while True:
         name = f"{random.choice(_LEFT)}-{random.choice(_RIGHT)}"
         if name != "boring-wozniak":
@@ -369,10 +368,8 @@ def random_name() -> str:
 
 
 def model_validate(model_cls: Type[T], data: Any) -> T:
-    """Validate a Capella response dict into a Pydantic model."""
     return model_cls.model_validate(data)
 
 
 def dump_model(model: BaseModel) -> Dict[str, Any]:
-    """Serialize a request model for Capella REST (aliases, omit nulls)."""
     return model.model_dump(by_alias=True, exclude_none=True)

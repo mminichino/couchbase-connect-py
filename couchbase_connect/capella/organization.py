@@ -45,7 +45,12 @@ class CapellaOrganization:
 
         if self._user is None:
             self._user = CapellaUser(self)
-        return self._user
+
+        try:
+            assert self._user is not None
+            return self._user
+        except AssertionError:
+            raise RuntimeError("Capella user not configured") from None
 
     def get_default_project(self) -> "CapellaProject":
         try:

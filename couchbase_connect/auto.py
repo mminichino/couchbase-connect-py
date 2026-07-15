@@ -9,7 +9,6 @@ from couchbase_connect.protocol import CouchbaseConnect, resolve
 
 
 class AutoCouchbaseConnect:
-    """Thin singleton facade mirroring Java AutoCouchbaseConnect."""
 
     _instance: Optional["AutoCouchbaseConnect"] = None
 
@@ -20,6 +19,7 @@ class AutoCouchbaseConnect:
     def get_instance(cls) -> "AutoCouchbaseConnect":
         if cls._instance is None:
             cls._instance = cls()
+        assert cls._instance is not None
         return cls._instance
 
     def _require_delegate(self) -> CouchbaseConnect:
@@ -51,4 +51,4 @@ class AutoCouchbaseConnect:
 
 
 class IllegalStateError(RuntimeError):
-    """Raised when AutoCouchbaseConnect is used before connect/create_cluster."""
+    pass

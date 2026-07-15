@@ -1,4 +1,4 @@
-"""Capella connection backend (module cloud.py avoids clash with capella package)."""
+"""Capella connection backend."""
 
 from __future__ import annotations
 
@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 
 class Capella(AbstractCouchbaseConnect):
-    """Couchbase Capella connection resolved via Capella Management API."""
 
     _instance: Optional["Capella"] = None
 
@@ -41,6 +40,7 @@ class Capella(AbstractCouchbaseConnect):
     def get_instance(cls) -> "Capella":
         if cls._instance is None:
             cls._instance = cls()
+        assert cls._instance is not None
         return cls._instance
 
     def connect(self, config: CouchbaseConfig) -> None:
@@ -205,7 +205,7 @@ class Capella(AbstractCouchbaseConnect):
         if self.capella_cluster is None:
             raise RuntimeError("Capella cluster is not connected")
         try:
-            return [item.name for item in CapellaBucket.get_instance(self.capella_cluster).list()]
+            return [item.name for item in CapellaBucket.get_instance(self.capella_cluster).list() if item.name is not None]
         except CapellaAPIError as exc:
             raise RuntimeError("Failed to list Capella buckets") from exc
 
@@ -236,12 +236,13 @@ class Capella(AbstractCouchbaseConnect):
         conflict = settings.get("conflict_resolution_type")
         conflict_str = str(getattr(conflict, "value", conflict or "seqno"))
 
+        num_replicas: int | None = settings.get("num_replicas")
         return {
             "name": settings.get("name"),
             "type": type_str,
             "storageBackend": storage_str,
             "memoryAllocationInMb": int(settings.get("ram_quota_mb", 128) or 128),
-            "replicas": int(settings.get("num_replicas", 1) or 1),
+            "replicas": 1 if num_replicas is None else int(num_replicas),
             "flush": bool(settings.get("flush_enabled", False)),
             "bucketConflictResolution": conflict_str,
         }

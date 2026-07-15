@@ -33,7 +33,6 @@ class HostPort:
 
 
 class CapellaConnectivity:
-    """Poll manager ports until a TCP connect succeeds (or timeout)."""
 
     def __init__(
         self,
@@ -64,7 +63,6 @@ class CapellaConnectivity:
                 if self._can_connect(target.host, target.port):
                     logger.debug("Connected to %s:%s", target.host, target.port)
                     return True
-            # Capella DNS SRV can appear after the initial wait — refresh and keep polling.
             refreshed = self.resolve_targets(connect_string, tls=tls, wait_for_srv=False)
             if refreshed:
                 targets = refreshed
@@ -141,16 +139,13 @@ class CapellaConnectivity:
 
     @staticmethod
     def _extract_hosts(connect_string: str) -> List[tuple[str, Optional[int]]]:
-        """Parse host[:port] entries from a couchbase(s):// connection string."""
         value = connect_string.strip()
         if "://" not in value:
             value = f"couchbases://{value}"
         parsed = urlparse(value)
         netloc = parsed.netloc or parsed.path
-        # Drop credentials if present
         if "@" in netloc:
             netloc = netloc.split("@", 1)[1]
-        # Query params / path not hosts
         netloc = netloc.split("/", 1)[0]
         if not netloc:
             return []
@@ -159,8 +154,7 @@ class CapellaConnectivity:
             part = part.strip()
             if not part:
                 continue
-            # IPv6 in brackets
-            match = re.match(r"^\[([^\]]+)\](?::(\d+))?$", part)
+            match = re.match(r"^\[([^]]+)](?::(\d+))?$", part)
             if match:
                 results.append((match.group(1), int(match.group(2)) if match.group(2) else None))
                 continue

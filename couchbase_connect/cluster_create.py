@@ -395,7 +395,7 @@ def _service_enabled(services: object, service: str) -> bool:
     if not isinstance(services, dict) or service not in services:
         return False
     value = services.get(service)
-    return value is not None and str(value) and str(value).lower() != "notrunning"
+    return bool(value is not None and str(value) and str(value).lower() != "notrunning")
 
 
 def _apply_quota_fields(fields: MutableMapping[str, str], quotas: Mapping[str, int]) -> None:

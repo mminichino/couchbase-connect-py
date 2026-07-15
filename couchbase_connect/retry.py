@@ -1,9 +1,9 @@
-"""Retry helpers built on tenacity decorators."""
+"""Retry helpers."""
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Callable, TypeVar
 
 from tenacity import (
     before_sleep_log,
@@ -51,7 +51,6 @@ def linear_retry(
     attempts: int = 10,
     wait_factor_ms: int = 100,
 ) -> Callable[[F], F]:
-    """Decorator mirroring Java RetryLogic (linear backoff: factor * attempt)."""
     start = wait_factor_ms / 1000.0
     return retry(
         reraise=True,
@@ -65,7 +64,6 @@ def index_creation_retry(
     attempts: int = 30,
     wait_seconds: float = 2.0,
 ) -> Callable[[F], F]:
-    """Decorator for index create/watch with retryable-error filtering."""
     return retry(
         reraise=True,
         stop=stop_after_attempt(attempts),
@@ -76,7 +74,6 @@ def index_creation_retry(
 
 
 def before_wait_cluster_ready(retry_state: Any) -> None:
-    """Tenacity ``before`` hook: call ``self.wait_for_cluster_operations_ready()``."""
     if not retry_state.args:
         return
     owner = retry_state.args[0]
@@ -89,7 +86,6 @@ def with_index_creation_retry(
     attempts: int = 30,
     wait_seconds: float = 2.0,
 ) -> Callable[[F], F]:
-    """Index retry decorator that waits for cluster ops before each attempt."""
     return retry(
         reraise=True,
         stop=stop_after_attempt(attempts),

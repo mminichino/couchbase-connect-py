@@ -16,10 +16,6 @@ logger = logging.getLogger(__name__)
 
 
 def parse_x509_certificate(pem: str) -> Any:
-    """Parse a PEM-encoded X.509 certificate.
-
-    Uses the ``cryptography`` package when available; otherwise raises RuntimeError.
-    """
     try:
         from cryptography import x509
         from cryptography.hazmat.backends import default_backend
@@ -64,7 +60,6 @@ class CapellaCertificate:
             self._certificate = None
 
     def get_cluster_certificate(self) -> str:
-        """Return the cluster CA certificate as a PEM string."""
         try:
             reply = self.rest.get(self.endpoint).validate().json()
             response = model_validate(CertificateResponse, reply)

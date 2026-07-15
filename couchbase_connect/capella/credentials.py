@@ -109,11 +109,15 @@ class CapellaCredentials:
             ) from exc
 
     def add_credentials(self, username: str, password: str) -> CredentialData:
-        self.username = username
-        self.password = password
-        self.user = self.get_by_name(username)
-        logger.debug("Added existing database credential %s", username)
-        return self.user
+        try:
+            self.username = username
+            self.password = password
+            self.user = self.get_by_name(username)
+            logger.debug("Added existing database credential %s", username)
+            assert self.user is not None
+            return self.user
+        except AssertionError as exc:
+            raise RuntimeError("Database credential add failed") from exc
 
     def update_credential(
         self, user_id: str, request: UpdateDatabaseCredentialRequest
@@ -202,7 +206,7 @@ class CapellaCredentials:
                 exc,
             ) from exc
 
-    def get_credential(self, username: str) -> CredentialData:
+    def get_credential(self, username: str) -> CredentialData | None:
         self.user = self.get_by_name(username)
         return self.user
 

@@ -6,7 +6,6 @@ from typing import Any, Optional
 
 
 class CapellaAPIError(Exception):
-    """Raised when a Capella REST call fails."""
 
     def __init__(
         self,
@@ -25,7 +24,6 @@ class CapellaAPIError(Exception):
 
 
 class CapellaNotFoundError(Exception):
-    """Raised when a Capella resource cannot be found."""
 
     def __init__(self, message: str) -> None:
         self.message = message
@@ -33,7 +31,6 @@ class CapellaNotFoundError(Exception):
 
 
 class UserNotConfiguredError(Exception):
-    """Raised when Capella user email/id has not been configured."""
 
     def __init__(self, message: str = "Capella user not configured") -> None:
         self.message = message

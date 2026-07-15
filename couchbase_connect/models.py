@@ -10,13 +10,13 @@ from couchbase_connect.enums import TableType
 
 @dataclass
 class BucketData:
-    name: str = ""
+    name: str = "default"
     type: str = "couchbase"
     quota: int = 128
     replicas: int = 1
     eviction: str = ""
     ttl: int = 0
-    storage: str = "couchstore"
+    storage: str = "magma"
     resolution: str = "seqno"
     password: str = ""
 

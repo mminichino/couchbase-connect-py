@@ -28,7 +28,6 @@ CAPELLA_DEFAULT_API_HOST = "cloudapi.cloud.couchbase.com"
 
 
 class CouchbaseCapella:
-    """Holds Capella API credentials/context and a configured RestAPI client."""
 
     def __init__(
         self,
