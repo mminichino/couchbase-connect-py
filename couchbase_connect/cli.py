@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 import typer
@@ -242,13 +243,35 @@ def cluster_create_cmd(
 
     db = Server.get_instance()
     try:
-        db.create_cluster(config, options)
+        created = db.create_cluster(config, options)
     except Exception as exc:  # noqa: BLE001
         typer.echo(f"Failed to create cluster: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
+    if not created:
+        return
     hosts = ", ".join(item[0] for item in nodes)
     typer.echo(f"Cluster created on {hosts}")
+
+
+@cluster_app.command("exists")
+def cluster_exists_cmd(
+    host: str = typer.Option(
+        CouchbaseConfig.DEFAULT_HOSTNAME, "--host", help="Cluster hostname or IP."
+    ),
+    username: str = typer.Option(
+        CouchbaseConfig.DEFAULT_USER, "--username", "-u", help="Administrator username."
+    ),
+    password: str = typer.Option(
+        CouchbaseConfig.DEFAULT_PASSWORD, "--password", "-p", help="Administrator password."
+    ),
+    ssl: bool = typer.Option(
+        False, "--ssl/--no-ssl", help="Use TLS when connecting (default: no TLS)."
+    ),
+) -> None:
+    """Print whether a Couchbase Server cluster is configured."""
+    config = _connection_config(host, username, password, ssl)
+    typer.echo(str(Server.get_instance().cluster_exists(config)).lower())
 
 
 @bucket_app.command("create")
@@ -287,6 +310,30 @@ def bucket_create_cmd(
     except Exception as exc:  # noqa: BLE001
         typer.echo(f"Failed to create bucket: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+    finally:
+        db.disconnect()
+
+
+@bucket_app.command("exists")
+def bucket_exists_cmd(
+    name: str = typer.Argument(..., help="Bucket name."),
+    host: str = typer.Option(
+        CouchbaseConfig.DEFAULT_HOSTNAME, "--host", help="Cluster hostname or IP."
+    ),
+    username: str = typer.Option(
+        CouchbaseConfig.DEFAULT_USER, "--username", "-u", help="Administrator username."
+    ),
+    password: str = typer.Option(
+        CouchbaseConfig.DEFAULT_PASSWORD, "--password", "-p", help="Administrator password."
+    ),
+    ssl: bool = typer.Option(
+        False, "--ssl/--no-ssl", help="Use TLS when connecting (default: no TLS)."
+    ),
+) -> None:
+    """Print whether a bucket exists."""
+    db = _connected_server(_connection_config(host, username, password, ssl))
+    try:
+        typer.echo(str(db.bucket_exists(name)).lower())
     finally:
         db.disconnect()
 
@@ -330,6 +377,31 @@ def scope_create_cmd(
         db.disconnect()
 
 
+@scope_app.command("exists")
+def scope_exists_cmd(
+    name: str = typer.Argument(..., help="Scope name."),
+    bucket: str = typer.Option(..., "--bucket", "-b", help="Parent bucket name."),
+    host: str = typer.Option(
+        CouchbaseConfig.DEFAULT_HOSTNAME, "--host", help="Cluster hostname or IP."
+    ),
+    username: str = typer.Option(
+        CouchbaseConfig.DEFAULT_USER, "--username", "-u", help="Administrator username."
+    ),
+    password: str = typer.Option(
+        CouchbaseConfig.DEFAULT_PASSWORD, "--password", "-p", help="Administrator password."
+    ),
+    ssl: bool = typer.Option(
+        False, "--ssl/--no-ssl", help="Use TLS when connecting (default: no TLS)."
+    ),
+) -> None:
+    """Print whether a scope exists."""
+    db = _connected_server(_connection_config(host, username, password, ssl))
+    try:
+        typer.echo(str(db.scope_exists(bucket, name)).lower())
+    finally:
+        db.disconnect()
+
+
 @collection_app.command("create")
 def collection_create_cmd(
     name: str = typer.Argument(..., help="Collection name."),
@@ -369,6 +441,80 @@ def collection_create_cmd(
         )
     except Exception as exc:  # noqa: BLE001
         typer.echo(f"Failed to create collection: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        db.disconnect()
+
+
+@collection_app.command("exists")
+def collection_exists_cmd(
+    name: str = typer.Argument(..., help="Collection name."),
+    bucket: str = typer.Option(..., "--bucket", "-b", help="Parent bucket name."),
+    scope: str = typer.Option(..., "--scope", "-s", help="Parent scope name."),
+    host: str = typer.Option(
+        CouchbaseConfig.DEFAULT_HOSTNAME, "--host", help="Cluster hostname or IP."
+    ),
+    username: str = typer.Option(
+        CouchbaseConfig.DEFAULT_USER, "--username", "-u", help="Administrator username."
+    ),
+    password: str = typer.Option(
+        CouchbaseConfig.DEFAULT_PASSWORD, "--password", "-p", help="Administrator password."
+    ),
+    ssl: bool = typer.Option(
+        False, "--ssl/--no-ssl", help="Use TLS when connecting (default: no TLS)."
+    ),
+) -> None:
+    """Print whether a collection exists."""
+    db = _connected_server(_connection_config(host, username, password, ssl))
+    try:
+        typer.echo(str(db.collection_exists(bucket, scope, name)).lower())
+    finally:
+        db.disconnect()
+
+
+@app.command("import")
+def import_json_lines_cmd(
+    json_lines_file: Path = typer.Argument(
+        ..., exists=True, dir_okay=False, readable=True, help="JSON Lines file to import."
+    ),
+    keyspace: str = typer.Argument(
+        ..., help="Destination in bucket.scope.collection format."
+    ),
+    host: str = typer.Option(
+        CouchbaseConfig.DEFAULT_HOSTNAME, "--host", help="Cluster hostname or IP."
+    ),
+    username: str = typer.Option(
+        CouchbaseConfig.DEFAULT_USER, "--username", "-u", help="Administrator username."
+    ),
+    password: str = typer.Option(
+        CouchbaseConfig.DEFAULT_PASSWORD, "--password", "-p", help="Administrator password."
+    ),
+    ssl: bool = typer.Option(
+        False, "--ssl/--no-ssl", help="Use TLS when connecting (default: no TLS)."
+    ),
+) -> None:
+    """Import JSON Lines into an empty collection."""
+    parts = keyspace.split(".")
+    if len(parts) != 3 or not all(parts):
+        raise typer.BadParameter(
+            "Keyspace must use bucket.scope.collection format", param_hint="keyspace"
+        )
+    bucket, scope, collection = parts
+    config = _connection_config(
+        host, username, password, ssl, bucket, scope, collection
+    )
+    db = _connected_server(config)
+    try:
+        db.ensure_collection(bucket, scope, collection)
+        if not db.collection_is_empty(bucket, scope, collection):
+            typer.echo("Collection not empty", err=True)
+            return
+        imported = db.populate_collection(
+            json_lines_file, bucket, scope, collection
+        )
+        typer.echo(f"Imported {imported} documents")
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(f"Failed to import JSON Lines file: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     finally:
         db.disconnect()

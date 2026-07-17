@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from pathlib import Path
 from typing import (
     Any,
     Dict,
@@ -12,6 +13,7 @@ from typing import (
     Optional,
     Protocol,
     Set,
+    Union,
     runtime_checkable, cast,
 )
 
@@ -42,7 +44,13 @@ class CouchbaseConnect(Protocol):
         self,
         config: CouchbaseConfig,
         options: Optional[Mapping[str, str]] = None,
-    ) -> None: ...
+    ) -> bool: ...
+
+    def cluster_exists(
+        self,
+        config: CouchbaseConfig,
+        options: Optional[Mapping[str, str]] = None,
+    ) -> bool: ...
 
     def destroy_cluster(self) -> None: ...
 
@@ -82,6 +90,8 @@ class CouchbaseConnect(Protocol):
     def list_buckets(self) -> List[str]: ...
 
     def is_bucket(self, bucket: Optional[str] = None) -> bool: ...
+
+    def bucket_exists(self, bucket_name: str) -> bool: ...
 
     def cluster_wait(self) -> None: ...
 
@@ -133,6 +143,8 @@ class CouchbaseConnect(Protocol):
         scope_name: Optional[str] = None,
     ) -> None: ...
 
+    def scope_exists(self, bucket_name: str, scope_name: str) -> bool: ...
+
     def create_collection(
         self,
         bucket_name: Optional[str] = None,
@@ -146,6 +158,28 @@ class CouchbaseConnect(Protocol):
         scope_name: str,
         collection_name: str,
     ) -> bool: ...
+
+    def ensure_collection(
+        self,
+        bucket_name: str,
+        scope_name: str,
+        collection_name: str,
+    ) -> Collection: ...
+
+    def collection_is_empty(
+        self,
+        bucket_name: str,
+        scope_name: str,
+        collection_name: str,
+    ) -> bool: ...
+
+    def populate_collection(
+        self,
+        json_lines_file: Union[str, Path],
+        bucket_name: str,
+        scope_name: str,
+        collection_name: str,
+    ) -> int: ...
 
     def create_primary_index(
         self,

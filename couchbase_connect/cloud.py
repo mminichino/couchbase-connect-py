@@ -262,7 +262,7 @@ class Capella(AbstractCouchbaseConnect):
         self,
         config: CouchbaseConfig,
         options: Optional[Mapping[str, str]],
-    ) -> None:
+    ) -> bool:
         merged = cluster_create.merge_options(config, options)
         self.properties.update(merged)
         self._resolve_database_name(config)
@@ -305,6 +305,7 @@ class Capella(AbstractCouchbaseConnect):
                 endpoint, self.username, self.password
             )
             logger.info("Capella cluster %s created", self.database_name)
+            return True
         except CapellaAPIError as e:
             raise RuntimeError("Failed to create Capella cluster") from e
 

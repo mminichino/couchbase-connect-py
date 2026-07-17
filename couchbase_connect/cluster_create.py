@@ -358,9 +358,15 @@ def is_cluster_initialized(
     rest = _admin_client(endpoint, username, password)
     try:
         response = rest.get("/pools/default").validate().json()
-        return _services_running(response, "kv", "n1ql", "index")
+        return isinstance(response, dict) and bool(response.get("nodes"))
     except Exception:  # noqa: BLE001
-        return False
+        try:
+            response = (
+                _admin_client(endpoint, None, None).get("/pools").validate().json()
+            )
+            return isinstance(response, dict) and bool(response.get("pools"))
+        except Exception:  # noqa: BLE001
+            return False
 
 
 def is_node_api_ready(endpoint: ClusterRestEndpoint) -> bool:

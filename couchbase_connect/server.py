@@ -95,6 +95,16 @@ class Server(AbstractCouchbaseConnect):
     def host_value(self) -> str:
         return self.connect_target
 
+    def create_cluster(
+        self,
+        config: CouchbaseConfig,
+        options: Optional[Mapping[str, str]] = None,
+    ) -> bool:
+        created = super().create_cluster(config, options)
+        if not created:
+            print("Cluster already configured")
+        return created
+
     def create_bucket_impl(self, bucket_settings: CreateBucketSettings) -> None:
         if self.cluster is None:
             raise RuntimeError("Cluster is not connected")
@@ -118,7 +128,7 @@ class Server(AbstractCouchbaseConnect):
         self,
         config: CouchbaseConfig,
         options: Optional[Mapping[str, str]],
-    ) -> None:
+    ) -> bool:
         merged = cluster_create.merge_options(config, options)
         nodes = cluster_create.parse_server_nodes(merged)
         if not nodes:
@@ -135,25 +145,15 @@ class Server(AbstractCouchbaseConnect):
             )
             endpoint = cluster_create.node_endpoint(first_node, use_ssl, use_ext_api)
 
-            # Management API must be reachable on every node before bootstrap.
-            cluster_create.wait_for_nodes_api(nodes, use_ssl, use_ext_api)
-
             if cluster_create.is_cluster_initialized(
                 endpoint, config.username, config.password
             ):
                 logger.debug("Cluster already initialized on %s", endpoint.host)
                 self.connect_target = endpoint.host
-                cluster_create.wait_for_rebalance_complete(
-                    endpoint, config.username, config.password
-                )
-                cluster_create.apply_alternate_addresses(
-                    nodes,
-                    config.username,
-                    config.password,
-                    use_ssl,
-                    use_ext_api,
-                )
-                return
+                return False
+
+            # Management API must be reachable on every node before bootstrap.
+            cluster_create.wait_for_nodes_api(nodes, use_ssl, use_ext_api)
 
             quotas = cluster_create.calculate_server_quotas(first_node, merged)
             logger.debug(
@@ -214,8 +214,25 @@ class Server(AbstractCouchbaseConnect):
                 use_ext_api,
             )
             self.connect_target = endpoint.host
+            return True
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError("Failed to create Couchbase Server cluster") from exc
+
+    def cluster_exists(
+        self,
+        config: CouchbaseConfig,
+        options: Optional[Mapping[str, str]] = None,
+    ) -> bool:
+        merged = cluster_create.merge_options(config, options)
+        nodes = cluster_create.parse_server_nodes(merged)
+        if not nodes:
+            return False
+        use_ssl = config.ssl_mode is not False
+        use_ext_api = cluster_create.parse_use_ext_api(merged)
+        endpoint = cluster_create.node_endpoint(nodes[0], use_ssl, use_ext_api)
+        return cluster_create.is_cluster_initialized(
+            endpoint, config.username, config.password
+        )
 
     def destroy_cluster_impl(self) -> None:
         logger.debug("destroy_cluster is not supported for Couchbase Server")

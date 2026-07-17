@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from abc import ABC, abstractmethod
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Set, Union
+from uuid import uuid4
 
 from couchbase.cluster import Cluster
 from couchbase.collection import Collection
@@ -13,7 +16,6 @@ from couchbase.diagnostics import ServiceType
 from couchbase.exceptions import (
     BucketNotFoundException,
     CollectionAlreadyExistsException,
-    CollectionNotFoundException,
     DocumentNotFoundException,
     ScopeAlreadyExistsException,
     SearchIndexNotFoundException,
@@ -212,7 +214,7 @@ class AbstractCouchbaseConnect(ABC):
         self,
         config: CouchbaseConfig,
         options: Optional[Mapping[str, str]],
-    ) -> None: ...
+    ) -> bool: ...
 
     @abstractmethod
     def destroy_cluster_impl(self) -> None: ...
@@ -227,9 +229,18 @@ class AbstractCouchbaseConnect(ABC):
         self,
         config: CouchbaseConfig,
         options: Optional[Mapping[str, str]] = None,
-    ) -> None:
+    ) -> bool:
         self.apply_config(config)
-        self.create_cluster_impl(config, options)
+        return self.create_cluster_impl(config, options)
+
+    def cluster_exists(
+        self,
+        config: CouchbaseConfig,
+        options: Optional[Mapping[str, str]] = None,
+    ) -> bool:
+        _ = options
+        self.apply_config(config)
+        return self.cluster is not None
 
     def destroy_cluster(self) -> None:
         self.destroy_cluster_impl()
@@ -319,6 +330,9 @@ class AbstractCouchbaseConnect(ABC):
         if not name:
             return False
         return name in self.list_buckets()
+
+    def bucket_exists(self, bucket_name: str) -> bool:
+        return self.is_bucket(bucket_name)
 
     def cluster_wait(self) -> None:
         if self.cluster is None:
@@ -494,6 +508,17 @@ class AbstractCouchbaseConnect(ABC):
         except ScopeAlreadyExistsException:
             logger.debug("Scope %s already exists in cluster", s_name)
 
+    def scope_exists(self, bucket_name: str, scope_name: str) -> bool:
+        if self.cluster is None:
+            raise NotConnectedError("Cluster is not connected")
+        if not self.bucket_exists(bucket_name):
+            return False
+        bucket = self.cluster.bucket(bucket_name)
+        return any(
+            scope_spec.name == scope_name
+            for scope_spec in bucket.collections().get_all_scopes()
+        )
+
     def create_collection(
         self,
         bucket_name: Optional[str] = None,
@@ -523,24 +548,69 @@ class AbstractCouchbaseConnect(ABC):
     ) -> bool:
         if self.cluster is None:
             raise NotConnectedError("Cluster is not connected")
-        try:
-            bucket = self.cluster.bucket(bucket_name)
-            bucket.scope(scope_name).collection(collection_name)
+        if not self.bucket_exists(bucket_name):
+            return False
+        bucket = self.cluster.bucket(bucket_name)
+        for scope_spec in bucket.collections().get_all_scopes():
+            if scope_spec.name != scope_name:
+                continue
+            return any(coll.name == collection_name for coll in scope_spec.collections)
+        return False
+
+    def ensure_collection(
+        self,
+        bucket_name: str,
+        scope_name: str,
+        collection_name: str,
+    ) -> Collection:
+        if self.cluster is None:
+            raise NotConnectedError("Cluster is not connected")
+        self.create_bucket(bucket_name, quota=128)
+        self.create_scope(bucket_name, scope_name)
+        self.create_collection(bucket_name, scope_name, collection_name)
+        self.connect_keyspace(bucket_name, scope_name, collection_name)
+        assert self.collection is not None
+        return self.collection
+
+    def collection_is_empty(
+        self,
+        bucket_name: str,
+        scope_name: str,
+        collection_name: str,
+    ) -> bool:
+        if not self.collection_exists(bucket_name, scope_name, collection_name):
             return True
-        except CollectionNotFoundException:
-            return False
-        except Exception:  # noqa: BLE001
-            try:
-                bucket = self.cluster.bucket(bucket_name)
-                for scope_spec in bucket.collections().get_all_scopes():
-                    if scope_spec.name != scope_name:
-                        continue
-                    for coll in scope_spec.collections:
-                        if coll.name == collection_name:
-                            return True
-            except Exception:  # noqa: BLE001
-                return False
-            return False
+        self.create_primary_index(bucket_name, scope_name, collection_name)
+        keyspace = ".".join(
+            f"`{part.replace('`', '``')}`"
+            for part in (bucket_name, scope_name, collection_name)
+        )
+        return not self.query(f"SELECT RAW 1 FROM {keyspace} LIMIT 1")
+
+    def populate_collection(
+        self,
+        json_lines_file: Union[str, Path],
+        bucket_name: str,
+        scope_name: str,
+        collection_name: str,
+    ) -> int:
+        collection = self.ensure_collection(
+            bucket_name, scope_name, collection_name
+        )
+        imported = 0
+        with Path(json_lines_file).open(encoding="utf-8") as source:
+            for line_number, line in enumerate(source, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    document = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"Invalid JSON on line {line_number} of {json_lines_file}"
+                    ) from exc
+                collection.upsert(str(uuid4()), document)
+                imported += 1
+        return imported
 
     def create_primary_index(
         self,

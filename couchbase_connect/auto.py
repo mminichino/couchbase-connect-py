@@ -41,10 +41,10 @@ class AutoCouchbaseConnect:
         self,
         config: CouchbaseConfig,
         options: Optional[Mapping[str, str]] = None,
-    ) -> None:
+    ) -> bool:
         self._assign_delegate(config)
         assert self._delegate is not None
-        self._delegate.create_cluster(config, options)
+        return self._delegate.create_cluster(config, options)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._require_delegate(), name)
