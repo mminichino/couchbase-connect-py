@@ -79,6 +79,7 @@ class CouchbaseConfig:
     CAPELLA_USER_ID = "capella.user.id"
 
     COUCHBASE_SERVER_PREFIX = "couchbase.server"
+    COUCHBASE_SERVER_EXT_API = "couchbase.server.extApi"
     CAPELLA_CLUSTER_ALLOW = "capella.cluster.allow"
 
     DEFAULT_USER = "Administrator"

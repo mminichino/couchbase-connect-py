@@ -78,6 +78,27 @@ def parse_host_port(value: Optional[str], default_port: int) -> HostPort:
     return HostPort(host_value, default_port)
 
 
+def parse_use_ext_api(options: Mapping[str, str]) -> bool:
+    value = options.get(CouchbaseConfig.COUCHBASE_SERVER_EXT_API)
+    if value is None or not str(value).strip():
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def api_host_for_node(node: ClusterNodeConfig, use_ext_api: bool) -> str:
+    if use_ext_api and node.alternate_address:
+        return parse_host_port(node.alternate_address, 8091).host
+    return parse_host_port(node.ip, 8091).host
+
+
+def node_endpoint(
+    node: ClusterNodeConfig,
+    use_ssl: bool,
+    use_ext_api: bool = False,
+) -> ClusterRestEndpoint:
+    return ClusterRestEndpoint.for_server(api_host_for_node(node, use_ext_api), use_ssl)
+
+
 def parse_server_nodes(options: Mapping[str, str]) -> List[ClusterNodeConfig]:
     nodes: Dict[int, ClusterNodeConfig] = {}
     for key, value in options.items():
@@ -178,15 +199,16 @@ def initialize_single_node_cluster(
     password: str,
     services: Sequence[str],
     quotas: Mapping[str, int],
+    cluster_hostname: Optional[str] = None,
 ) -> None:
-    cluster_hostname = cluster_init_hostname(endpoint.host)
+    resolved_hostname = cluster_init_hostname(cluster_hostname or endpoint.host)
     fields: MutableMapping[str, str] = {
-        "hostname": cluster_hostname,
+        "hostname": resolved_hostname,
         "username": username,
         "password": password,
         "port": "SAME",
         "services": to_rest_services(services),
-        "allowedHosts": allowed_hosts(cluster_hostname),
+        "allowedHosts": allowed_hosts(resolved_hostname),
         "indexerStorageMode": "plasma",
     }
     _apply_quota_fields(fields, quotas)
@@ -341,6 +363,51 @@ def is_cluster_initialized(
         return False
 
 
+def is_node_api_ready(endpoint: ClusterRestEndpoint) -> bool:
+    try:
+        _form_client(endpoint, None, None, endpoint.admin_port).get("/pools").validate()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def wait_for_node_api(
+    endpoint: ClusterRestEndpoint,
+    retries: int = 60,
+) -> None:
+    for _ in range(retries):
+        if is_node_api_ready(endpoint):
+            logger.debug(
+                "Node API ready at %s:%s/pools",
+                endpoint.host,
+                endpoint.admin_port,
+            )
+            return
+        time.sleep(2)
+    scheme = "https" if endpoint.use_ssl else "http"
+    raise ClusterCreateError(
+        f"Timed out waiting for Couchbase API at "
+        f"{scheme}://{endpoint.host}:{endpoint.admin_port}/pools"
+    )
+
+
+def wait_for_nodes_api(
+    nodes: Sequence[ClusterNodeConfig],
+    use_ssl: bool,
+    use_ext_api: bool = False,
+    retries: int = 60,
+) -> None:
+    for node in nodes:
+        endpoint = node_endpoint(node, use_ssl, use_ext_api)
+        logger.debug(
+            "Waiting for node API on %s (ssl=%s, ext_api=%s)",
+            endpoint.host,
+            use_ssl,
+            use_ext_api,
+        )
+        wait_for_node_api(endpoint, retries=retries)
+
+
 def post_form(
     endpoint: ClusterRestEndpoint,
     username: Optional[str],
@@ -384,17 +451,16 @@ def apply_alternate_addresses(
     username: str,
     password: str,
     use_ssl: bool,
+    use_ext_api: bool = False,
 ) -> None:
-    admin_rest_port = 18091 if use_ssl else 8091
     for node in nodes:
         if not node.alternate_address:
             continue
-        node_host = parse_host_port(node.ip, admin_rest_port)
-        endpoint = ClusterRestEndpoint.for_server(node_host.host, use_ssl)
+        endpoint = node_endpoint(node, use_ssl, use_ext_api)
         logger.debug(
             "Setting alternate address %s on node %s",
             node.alternate_address,
-            node_host.host,
+            endpoint.host,
         )
         setup_alternate_address(
             endpoint,

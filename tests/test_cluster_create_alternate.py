@@ -36,6 +36,19 @@ def test_parse_server_nodes_alternate_address_and_ports() -> None:
     assert nodes[1].alternate_ports == {"fts": 9200}
 
 
+def test_api_host_for_node_respects_ext_api() -> None:
+    node = cluster_create.parse_server_nodes(
+        {
+            "couchbase.server.0.ip": "10.0.0.1",
+            "couchbase.server.0.alternateAddress": "ext.example.com",
+        }
+    )[0]
+    assert cluster_create.api_host_for_node(node, use_ext_api=False) == "10.0.0.1"
+    assert cluster_create.api_host_for_node(node, use_ext_api=True) == "ext.example.com"
+    assert cluster_create.parse_use_ext_api({"couchbase.server.extApi": "true"})
+    assert not cluster_create.parse_use_ext_api({})
+
+
 def test_cli_parse_node_spec_with_alternate() -> None:
     host, services, ram, alternate, ports = _parse_node_spec(
         "10.0.0.1=data,index@8#ext.example.com;kv:9000,n1ql:9050",
@@ -83,3 +96,33 @@ def test_create_cluster_with_alternate_address() -> None:
     alternate = nodes[0].get("alternateAddresses") or {}
     external = alternate.get("external") or {}
     assert external.get("hostname") == ALTERNATE
+
+
+@pytest.mark.server
+@pytest.mark.usefixtures("server_container")
+def test_create_cluster_with_ext_api_and_wait_for_pools() -> None:
+    db = Server.get_instance()
+    config = (
+        CouchbaseConfig()
+        .host(ALTERNATE)
+        .with_username(ADMIN)
+        .with_password(PASSWORD)
+        .ssl(False)
+    )
+    options = {
+        "couchbase.server.0.ip": HOST,
+        "couchbase.server.0.ram": "4",
+        "couchbase.server.0.services": "data,index,query,fts",
+        "couchbase.server.0.alternateAddress": ALTERNATE,
+        CouchbaseConfig.COUCHBASE_SERVER_EXT_API: "true",
+    }
+
+    # Proves wait_for_nodes_api + REST via alternate address both succeed.
+    db.create_cluster(config, options)
+    endpoint = cluster_create.node_endpoint(
+        cluster_create.parse_server_nodes(options)[0],
+        use_ssl=False,
+        use_ext_api=True,
+    )
+    assert endpoint.host == ALTERNATE
+    assert cluster_create.is_cluster_initialized(endpoint, ADMIN, PASSWORD)

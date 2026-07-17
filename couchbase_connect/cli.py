@@ -88,7 +88,10 @@ def _parse_node_spec(
     return host, services, ram, alternate_address, alternate_ports
 
 
-def _build_server_options(nodes: Sequence[NodeSpec]) -> dict[str, str]:
+def _build_server_options(
+    nodes: Sequence[NodeSpec],
+    ext_api: bool = False,
+) -> dict[str, str]:
     options: dict[str, str] = {}
     for index, (host, services, ram, alternate, ports) in enumerate(nodes):
         options[f"couchbase.server.{index}.ip"] = host
@@ -100,6 +103,8 @@ def _build_server_options(nodes: Sequence[NodeSpec]) -> dict[str, str]:
             options[f"couchbase.server.{index}.alternatePorts"] = ",".join(
                 f"{service}:{port}" for service, port in ports.items()
             )
+    if ext_api:
+        options[CouchbaseConfig.COUCHBASE_SERVER_EXT_API] = "true"
     return options
 
 
@@ -173,6 +178,14 @@ def cluster_create_cmd(
             "(when --node is omitted). For multi-node, embed #ALTERNATE in --node."
         ),
     ),
+    ext_api: bool = typer.Option(
+        False,
+        "--ext-api/--no-ext-api",
+        help=(
+            "Use each node's alternate address for management REST API calls "
+            "when an alternate address is configured."
+        ),
+    ),
     username: str = typer.Option(
         CouchbaseConfig.DEFAULT_USER,
         "--username",
@@ -191,6 +204,7 @@ def cluster_create_cmd(
         help="Use TLS for management endpoints (default: no TLS).",
     ),
 ) -> None:
+    """Create and initialize a Couchbase Server cluster."""
     default_services = [part.strip() for part in services.split(",") if part.strip()]
     if not default_services:
         raise typer.BadParameter("At least one service is required")
@@ -214,8 +228,17 @@ def cluster_create_cmd(
             )
         ]
 
-    config = _connection_config(nodes[0][0], username, password, ssl)
-    options = _build_server_options(nodes)
+    if ext_api and not any(item[3] for item in nodes):
+        raise typer.BadParameter(
+            "--ext-api requires an alternate address on at least one node"
+        )
+
+    # Prefer alternate address for CouchbaseConfig.host when --ext-api is set.
+    primary_host = nodes[0][0]
+    if ext_api and nodes[0][3]:
+        primary_host = nodes[0][3]
+    config = _connection_config(primary_host, username, password, ssl)
+    options = _build_server_options(nodes, ext_api=ext_api)
 
     db = Server.get_instance()
     try:

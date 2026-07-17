@@ -126,30 +126,41 @@ class Server(AbstractCouchbaseConnect):
 
         admin_rest_port = 8091 if config.ssl_mode is False else 18091
         use_ssl = config.ssl_mode is not False
+        use_ext_api = cluster_create.parse_use_ext_api(merged)
         node_hosts = []
         try:
             first_node = nodes[0]
-            first_host = cluster_create.parse_host_port(first_node.ip, admin_rest_port)
-            endpoint = cluster_create.ClusterRestEndpoint.for_server(
-                first_host.host, use_ssl
+            first_internal = cluster_create.parse_host_port(
+                first_node.ip, admin_rest_port
             )
+            endpoint = cluster_create.node_endpoint(first_node, use_ssl, use_ext_api)
+
+            # Management API must be reachable on every node before bootstrap.
+            cluster_create.wait_for_nodes_api(nodes, use_ssl, use_ext_api)
+
             if cluster_create.is_cluster_initialized(
                 endpoint, config.username, config.password
             ):
-                logger.debug("Cluster already initialized on %s", first_host.host)
-                self.connect_target = first_host.host
+                logger.debug("Cluster already initialized on %s", endpoint.host)
+                self.connect_target = endpoint.host
                 cluster_create.wait_for_rebalance_complete(
                     endpoint, config.username, config.password
                 )
                 cluster_create.apply_alternate_addresses(
-                    nodes, config.username, config.password, use_ssl
+                    nodes,
+                    config.username,
+                    config.password,
+                    use_ssl,
+                    use_ext_api,
                 )
                 return
 
             quotas = cluster_create.calculate_server_quotas(first_node, merged)
             logger.debug(
-                "Creating single-node cluster on %s with quotas %s",
-                first_host.host,
+                "Creating single-node cluster via %s (ssl=%s, ext_api=%s) with quotas %s",
+                endpoint.host,
+                use_ssl,
+                use_ext_api,
                 quotas,
             )
             cluster_create.initialize_single_node_cluster(
@@ -158,19 +169,22 @@ class Server(AbstractCouchbaseConnect):
                 config.password,
                 first_node.services,
                 quotas,
+                cluster_hostname=first_internal.host,
             )
-            node_hosts.append(first_host.host)
+            node_hosts.append(cluster_create.cluster_init_hostname(first_internal.host))
 
             for node in nodes[1:]:
-                node_host = cluster_create.parse_host_port(node.ip, admin_rest_port)
+                node_internal = cluster_create.parse_host_port(node.ip, admin_rest_port)
                 cluster_create.add_node_to_cluster(
                     endpoint,
                     config.username,
                     config.password,
-                    node_host.host,
+                    node_internal.host,
                     node.services,
                 )
-                node_hosts.append(node_host.host)
+                node_hosts.append(
+                    cluster_create.cluster_init_hostname(node_internal.host)
+                )
 
             if len(nodes) > 1:
                 cluster_create.rebalance_cluster(
@@ -193,9 +207,13 @@ class Server(AbstractCouchbaseConnect):
                 endpoint, config.username, config.password
             )
             cluster_create.apply_alternate_addresses(
-                nodes, config.username, config.password, use_ssl
+                nodes,
+                config.username,
+                config.password,
+                use_ssl,
+                use_ext_api,
             )
-            self.connect_target = first_host.host
+            self.connect_target = endpoint.host
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError("Failed to create Couchbase Server cluster") from exc
 
