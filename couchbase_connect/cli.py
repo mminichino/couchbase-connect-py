@@ -274,6 +274,30 @@ def cluster_exists_cmd(
     typer.echo(str(Server.get_instance().cluster_exists(config)).lower())
 
 
+@cluster_app.command("map")
+def cluster_map_cmd(
+    host: str = typer.Option(
+        CouchbaseConfig.DEFAULT_HOSTNAME, "--host", help="Cluster hostname or IP."
+    ),
+    username: str = typer.Option(
+        CouchbaseConfig.DEFAULT_USER, "--username", "-u", help="Administrator username."
+    ),
+    password: str = typer.Option(
+        CouchbaseConfig.DEFAULT_PASSWORD, "--password", "-p", help="Administrator password."
+    ),
+    ssl: bool = typer.Option(
+        False, "--ssl/--no-ssl", help="Use TLS when connecting (default: no TLS)."
+    ),
+) -> None:
+    """Print the cluster host map from the management REST API."""
+    config = _connection_config(host, username, password, ssl)
+    try:
+        typer.echo(Server.get_instance().cluster_map(config))
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(f"Failed to read cluster map: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+
 @bucket_app.command("create")
 def bucket_create_cmd(
     name: str = typer.Argument(..., help="Bucket name."),

@@ -127,6 +127,7 @@ def test_cli_create_cluster_bucket_scope_collection(tmp_path: Path) -> None:
 
     exists_commands = [
         ["cluster", "exists"],
+        ["cluster", "map"],
         ["bucket", "exists", BUCKET],
         ["scope", "exists", SCOPE, "--bucket", BUCKET],
         [
@@ -154,7 +155,10 @@ def test_cli_create_cluster_bucket_scope_collection(tmp_path: Path) -> None:
             ],
         )
         assert result.exit_code == 0, result.output
-        assert result.output.strip() == "true"
+        if command[-1] == "exists":
+            assert result.output.strip() == "true"
+        elif command[-1] == "map":
+            assert "Cluster Host List:" in result.output
 
     json_lines = tmp_path / "documents.jsonl"
     json_lines.write_text('{"name":"one"}\n{"name":"two"}\n', encoding="utf-8")

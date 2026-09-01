@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Set, Union
 from uuid import uuid4
 
+import dns.exception
+import dns.resolver
+
 from couchbase.cluster import Cluster
 from couchbase.collection import Collection
 from couchbase.diagnostics import ServiceType
@@ -41,6 +44,7 @@ from restfull.basic_auth import BasicAuth
 from restfull.restapi import RestAPI
 
 from couchbase_connect import cluster_create
+from couchbase_connect.capella.connectivity import SRV_SERVICE_PLAIN, SRV_SERVICE_TLS
 from couchbase_connect.config import (
     CouchbaseConfig,
     convert_bucket_type,
@@ -62,6 +66,71 @@ from couchbase_connect.retry import linear_retry, with_index_creation_retry
 from couchbase_connect.stream import CouchbaseStream
 
 logger = logging.getLogger(__name__)
+
+
+def lookup_srv_records(hostname: str, tls: bool) -> List[Dict[str, str]]:
+    service = (SRV_SERVICE_TLS if tls else SRV_SERVICE_PLAIN) + hostname
+    try:
+        answers = dns.resolver.resolve(service, "SRV")
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return []
+    except dns.exception.Timeout:
+        raise RuntimeError(f"{service} lookup timeout")
+
+    records: List[Dict[str, str]] = []
+    for srv in answers:
+        target = str(srv.target).rstrip(".")
+        try:
+            host_answer = dns.resolver.resolve(target, "A")
+            address = host_answer[0].address
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, IndexError):
+            address = ""
+        records.append({"hostname": target, "address": address})
+    return records
+
+
+def format_cluster_map_text(
+    hostname: str,
+    srv_records: List[Dict[str, str]],
+    cluster_info: Mapping[str, Any],
+) -> str:
+    lines: List[str] = []
+    if srv_records:
+        lines.append(f"Name {hostname} is a domain with SRV records:")
+        for record in srv_records:
+            lines.append(f" => {record['hostname']} ({record['address']})")
+        lines.append("")
+
+    lines.append("Cluster Host List:")
+    nodes = cluster_info.get("nodes") or []
+    for index, record in enumerate(nodes):
+        if not isinstance(record, dict):
+            continue
+        ext_host_name: Optional[str] = None
+        ext_port_list: Optional[Mapping[str, Any]] = None
+        alternate = record.get("alternateAddresses")
+        if isinstance(alternate, dict):
+            external = alternate.get("external")
+            if isinstance(external, dict):
+                ext_host_name = external.get("hostname")
+                ports = external.get("ports")
+                if isinstance(ports, dict):
+                    ext_port_list = ports
+
+        host_name = str(record.get("configuredHostname", ""))
+        version = str(record.get("version", ""))
+        ostype = str(record.get("os", ""))
+        services = ",".join(record.get("services") or [])
+
+        parts = [f" [{index + 1:02d}] {host_name}"]
+        if ext_host_name:
+            parts.append(f"[external]> {ext_host_name}")
+        if ext_port_list:
+            for key in ext_port_list:
+                parts.append(f"{key}:{ext_port_list[key]}")
+        parts.append(f"[Services] {services} [version] {version} [platform] {ostype}")
+        lines.append(" ".join(parts))
+    return "\n".join(lines)
 
 
 class AbstractCouchbaseConnect(ABC):
@@ -241,6 +310,17 @@ class AbstractCouchbaseConnect(ABC):
         _ = options
         self.apply_config(config)
         return self.cluster is not None
+
+    def cluster_map(self, config: CouchbaseConfig) -> str:
+        self.apply_config(config)
+        self.admin_port = 18091 if self.use_ssl else 8091
+        hostname = self.connect_target
+        srv_hostname = hostname.split(":", 1)[0]
+        srv_records: List[Dict[str, str]] = []
+        if ":" not in hostname:
+            srv_records = lookup_srv_records(srv_hostname, bool(self.use_ssl))
+        self.load_cluster_info()
+        return format_cluster_map_text(srv_hostname, srv_records, self.cluster_info)
 
     def destroy_cluster(self) -> None:
         self.destroy_cluster_impl()
