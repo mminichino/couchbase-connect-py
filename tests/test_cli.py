@@ -188,6 +188,46 @@ def test_cli_create_cluster_bucket_scope_collection(tmp_path: Path) -> None:
     assert import_result.exit_code == 0, import_result.output
     assert "Imported 2 documents" in import_result.output
 
+    test_result = runner.invoke(
+        app,
+        [
+            "cluster",
+            "test",
+            "--host",
+            HOST,
+            "--username",
+            ADMIN,
+            "--password",
+            PASSWORD,
+            "--no-ssl",
+            "--timeout",
+            "5",
+        ],
+    )
+    assert test_result.exit_code == 0, test_result.output
+    assert "Cluster test passed" in test_result.output
+
+    existing_bucket_result = runner.invoke(
+        app,
+        [
+            "cluster",
+            "test",
+            "--host",
+            HOST,
+            "--username",
+            ADMIN,
+            "--password",
+            PASSWORD,
+            "--bucket",
+            BUCKET,
+            "--no-ssl",
+            "--timeout",
+            "5",
+        ],
+    )
+    assert existing_bucket_result.exit_code == 0, existing_bucket_result.output
+    assert "Cluster test passed" in existing_bucket_result.output
+
     db = Server.get_instance()
     config = (
         CouchbaseConfig()
@@ -198,5 +238,6 @@ def test_cli_create_cluster_bucket_scope_collection(tmp_path: Path) -> None:
     )
     db.connect(config)
     assert db.is_bucket(BUCKET)
+    assert not db.is_bucket("__test")
     assert db.collection_exists(BUCKET, SCOPE, COLLECTION)
     db.disconnect()

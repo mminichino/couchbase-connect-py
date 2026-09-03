@@ -60,6 +60,8 @@ class Server(AbstractCouchbaseConnect):
                 "enable_tls": bool(self.use_ssl),
                 "enable_mutation_tokens": False,
             }
+            if config.network:
+                option_kwargs["network"] = config.network
             if config.root_cert:
                 option_kwargs["trust_store_path"] = config.root_cert
                 option_kwargs["tls_verify"] = TLSVerifyMode.PEER

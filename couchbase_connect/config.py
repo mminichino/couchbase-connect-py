@@ -59,6 +59,7 @@ class CouchbaseConfig:
     COUCHBASE_KV_TIMEOUT = "couchbase.kvTimeout"
     COUCHBASE_CONNECT_TIMEOUT = "couchbase.connectTimeout"
     COUCHBASE_QUERY_TIMEOUT = "couchbase.queryTimeout"
+    COUCHBASE_NETWORK = "couchbase.network"
     COUCHBASE_BUCKET_TYPE = "couchbase.bucketType"
     COUCHBASE_STORAGE_TYPE = "couchbase.storageBackend"
     COUCHBASE_QUICK_CONNECT = "couchbase.quickConnect"
@@ -105,6 +106,7 @@ class CouchbaseConfig:
         self._kv_timeout = 5
         self._connect_timeout = 15
         self._query_timeout = 75
+        self._network: Optional[str] = None
         self._bucket_type = BucketType.COUCHBASE
         self._bucket_storage = StorageBackend.COUCHSTORE
         self._ttl_seconds = 0
@@ -185,6 +187,10 @@ class CouchbaseConfig:
         return self._query_timeout
 
     @property
+    def network(self) -> Optional[str]:
+        return self._network
+
+    @property
     def bucket_type(self) -> BucketType:
         return self._bucket_type
 
@@ -247,6 +253,24 @@ class CouchbaseConfig:
     def with_query_timeout(self, timeout: int) -> CouchbaseConfig:
         self._query_timeout = timeout
         return self
+
+    def with_network(self, network: Optional[str]) -> CouchbaseConfig:
+        if network is None:
+            self._network = None
+            return self
+        value = network.strip().lower()
+        if value in {"", "auto"}:
+            self._network = None
+            return self
+        if value in {"external", "default"}:
+            self._network = value
+            return self
+        if value == "internal":
+            self._network = "default"
+            return self
+        raise ValueError(
+            f"Invalid network {network!r}; expected auto, default, internal, or external"
+        )
 
     def with_bucket_type(self, bucket_type: Union[str, BucketType]) -> CouchbaseConfig:
         self._bucket_type = convert_bucket_type(bucket_type)
@@ -378,6 +402,9 @@ class CouchbaseConfig:
         self._kv_timeout = int(props.get(self.COUCHBASE_KV_TIMEOUT, "5"))
         self._connect_timeout = int(props.get(self.COUCHBASE_CONNECT_TIMEOUT, "15"))
         self._query_timeout = int(props.get(self.COUCHBASE_QUERY_TIMEOUT, "75"))
+        network = props.get(self.COUCHBASE_NETWORK)
+        if network is not None:
+            self.with_network(network)
         self._ttl_seconds = int(props.get(self.COUCHBASE_TTL, "0"))
         self._bucket_type = convert_bucket_type(
             props.get(self.COUCHBASE_BUCKET_TYPE, "couchbase")
