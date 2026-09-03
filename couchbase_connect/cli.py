@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
@@ -117,6 +118,8 @@ def _connection_config(
     bucket: Optional[str] = None,
     scope: Optional[str] = None,
     collection: Optional[str] = None,
+    network: Optional[str] = None,
+    connect_timeout: Optional[int] = None,
 ) -> CouchbaseConfig:
     config = (
         CouchbaseConfig()
@@ -131,6 +134,10 @@ def _connection_config(
         config = config.scope(scope)
     if collection:
         config = config.collection(collection)
+    if network is not None:
+        config = config.with_network(network)
+    if connect_timeout is not None:
+        config = config.with_connect_timeout(connect_timeout)
     return config
 
 
@@ -138,6 +145,58 @@ def _connected_server(config: CouchbaseConfig) -> Server:
     db = Server.get_instance()
     db.connect(config)
     return db
+
+
+def _resolve_network_option(*, external: bool, internal: bool) -> Optional[str]:
+    if external and internal:
+        raise typer.BadParameter("Use either --external or --internal, not both")
+    if external:
+        return "external"
+    if internal:
+        return "default"
+    return None
+
+
+TEST_BUCKET = "__test"
+TEST_DOCUMENT_ID = "cbctl-cluster-test"
+TEST_DOCUMENT = {"ok": True, "source": "cbctl cluster test"}
+DEFAULT_CLUSTER_TEST_TIMEOUT = 5
+
+
+def _run_cluster_connectivity_test(
+    db: Server,
+    bucket: Optional[str] = None,
+) -> None:
+    manage_bucket = bucket is None
+    target_bucket = TEST_BUCKET if manage_bucket else bucket
+    assert target_bucket is not None
+
+    if manage_bucket:
+        if db.is_bucket(target_bucket):
+            db.drop_bucket(target_bucket)
+        db.create_bucket(target_bucket, quota=128, replicas=0)
+    elif not db.is_bucket(target_bucket):
+        raise RuntimeError(f"Bucket {target_bucket!r} does not exist")
+
+    last_error: Optional[Exception] = None
+    for _ in range(10):
+        try:
+            db.connect_keyspace(target_bucket, "_default", "_default")
+            db.upsert(TEST_DOCUMENT_ID, TEST_DOCUMENT)
+            fetched = db.get(TEST_DOCUMENT_ID)
+            if fetched != TEST_DOCUMENT:
+                raise RuntimeError(
+                    f"Test document mismatch: expected {TEST_DOCUMENT!r}, got {fetched!r}"
+                )
+            if manage_bucket:
+                db.drop_bucket(target_bucket)
+            return
+        except RuntimeError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            time.sleep(0.5)
+    raise RuntimeError(f"Cluster KV test failed after retries: {last_error}")
 
 
 @cluster_app.command("create")
@@ -296,6 +355,83 @@ def cluster_map_cmd(
     except Exception as exc:  # noqa: BLE001
         typer.echo(f"Failed to read cluster map: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+
+@cluster_app.command("test")
+def cluster_test_cmd(
+    host: str = typer.Option(
+        CouchbaseConfig.DEFAULT_HOSTNAME, "--host", help="Cluster hostname or IP."
+    ),
+    username: str = typer.Option(
+        CouchbaseConfig.DEFAULT_USER, "--username", "-u", help="Administrator username."
+    ),
+    password: str = typer.Option(
+        CouchbaseConfig.DEFAULT_PASSWORD, "--password", "-p", help="Administrator password."
+    ),
+    ssl: bool = typer.Option(
+        False, "--ssl/--no-ssl", help="Use TLS when connecting (default: no TLS)."
+    ),
+    bucket: Optional[str] = typer.Option(
+        None,
+        "--bucket",
+        "-b",
+        help=(
+            "Existing bucket for put/get only. "
+            "When omitted, create and delete a temporary __test bucket."
+        ),
+    ),
+    external: bool = typer.Option(
+        False,
+        "--external",
+        help="Force SDK network resolution to external alternate addresses.",
+    ),
+    internal: bool = typer.Option(
+        False,
+        "--internal",
+        help="Force SDK network resolution to internal (default) addresses.",
+    ),
+    timeout: int = typer.Option(
+        DEFAULT_CLUSTER_TEST_TIMEOUT,
+        "--timeout",
+        help="SDK connect timeout in seconds (default: 5).",
+    ),
+) -> None:
+    """Connect and verify KV access via put/get.
+
+    By default creates and deletes a temporary __test bucket. Pass --bucket to
+    reuse an existing bucket and skip bucket create/delete.
+    """
+    if timeout <= 0:
+        raise typer.BadParameter("--timeout must be a positive integer")
+    network = _resolve_network_option(external=external, internal=internal)
+    config = _connection_config(
+        host,
+        username,
+        password,
+        ssl,
+        bucket=bucket,
+        network=network,
+        connect_timeout=timeout,
+    )
+    db = Server.get_instance()
+    db.disconnect()
+    manage_bucket = bucket is None
+    try:
+        db.connect(config)
+        typer.echo(f"Connected to {host}")
+        _run_cluster_connectivity_test(db, bucket=bucket)
+        typer.echo("Cluster test passed")
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(f"Cluster test failed: {exc}", err=True)
+        if manage_bucket:
+            try:
+                if db.cluster is not None and db.is_bucket(TEST_BUCKET):
+                    db.drop_bucket(TEST_BUCKET)
+            except Exception:  # noqa: BLE001
+                pass
+        raise typer.Exit(code=1) from exc
+    finally:
+        db.disconnect()
 
 
 @bucket_app.command("create")
