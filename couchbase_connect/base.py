@@ -122,9 +122,9 @@ def format_cluster_map_text(
         ostype = str(record.get("os", ""))
         services = ",".join(record.get("services") or [])
 
-        parts = [f" [{index + 1:02d}] {host_name}"]
+        parts = [f" [{index + 1:02d}] int: {host_name}"]
         if ext_host_name:
-            parts.append(f"[external]> {ext_host_name}")
+            parts.append(f"ext: {ext_host_name}")
         if ext_port_list:
             for key in ext_port_list:
                 parts.append(f"{key}:{ext_port_list[key]}")
